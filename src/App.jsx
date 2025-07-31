@@ -7,6 +7,7 @@ import Features from "./components/Features";
 import About from "./components/About";
 import Footer from "./components/Footer";
 import ResourcePage from './components/ResourcePage';
+import Login from "./components/Login";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -46,6 +47,8 @@ export default function App() {
               <Footer />
             </>
           } />
+          {/* Login page route */}
+          <Route path="/Login" element={<Login onLogin={() => setIsSignedIn(true)} />} />
         </Routes>
       </div>
     </Router>

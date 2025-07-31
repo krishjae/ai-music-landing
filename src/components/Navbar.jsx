@@ -1,4 +1,3 @@
-
 import React from "react";
 import { Link } from "react-router-dom";
 
@@ -46,12 +45,12 @@ export default function Navbar({ isSignedIn, setIsSignedIn }) {
             Signed in
           </div>
         ) : (
-          <button
-            onClick={() => setIsSignedIn(true)}
-            className="bg-gradient-to-r from-purple-600 to-green-400 text-white py-2 px-4 rounded-full text-sm shadow hover:scale-105 transition"
+          <Link
+            to="/login"
+            className="bg-gradient-to-r from-purple-600 to-green-400 text-white py-2 px-5 rounded-full shadow-lg hover:scale-105 transition transform duration-200 ml-4"
           >
             Login
-          </button>
+          </Link>
         )}
       </div>
     </nav>
