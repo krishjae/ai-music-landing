@@ -8,6 +8,8 @@ import About from "./components/About";
 import Footer from "./components/Footer";
 import ResourcePage from './components/ResourcePage';
 import Login from "./components/Login";
+import ChordTutor from "./components/ChordTutor";
+import StemExtractor from "./components/StemExtractor";
 
 export default function App() {
   const [loading, setLoading] = useState(true);
@@ -49,6 +51,10 @@ export default function App() {
           } />
           {/* Login page route */}
           <Route path="/Login" element={<Login onLogin={() => setIsSignedIn(true)} />} />
+          {/* Chord Tutor route */}
+          <Route path="/chord-tutor" element={<ChordTutor />} />
+          {/* Stem Extractor route */}
+          <Route path="/stem-extractor" element={<StemExtractor />} />
         </Routes>
       </div>
     </Router>
