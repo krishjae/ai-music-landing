@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.11",
+    "@tombatossals/react-chords": "^0.2.10",
+    "axios": "^1.12.2",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "fluent-ffmpeg": "^2.1.3",

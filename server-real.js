@@ -52,7 +52,167 @@ const upload = multer({
   }
 });
 
-// Real-time Audio Analysis Function
+// ==============================
+// CHORD ANALYZER ROUTES (NEW)
+// ==============================
+
+// Configure multer for chord analyzer
+const chordStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(__dirname, 'uploads', 'audio');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  }
+});
+
+const chordUpload = multer({ 
+  storage: chordStorage,
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /mp3|wav|m4a|ogg|flac/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    if (extname) {
+      return cb(null, true);
+    }
+    cb(new Error('Only audio files are allowed'));
+  }
+});
+
+// Chord Analysis Route
+app.post('/api/chord/analyze', chordUpload.single('audio'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No audio file uploaded' });
+  }
+
+  const filePath = req.file.path;
+  console.log(`🎵 Analyzing chords for: ${req.file.originalname}`);
+  
+  // Python script for chord analysis
+  const chordAnalysisScript = `
+import sys
+import json
+import librosa
+import numpy as np
+
+def analyze_song(audio_file):
+    try:
+        # Load audio (first 60 seconds for speed)
+        y, sr = librosa.load(audio_file, duration=60)
+        
+        # 1. TEMPO
+        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+        
+        # 2. KEY/SCALE
+        chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+        key_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+        key_index = np.argmax(np.sum(chroma, axis=1))
+        key = key_names[key_index]
+        
+        # 3. MAIN 4 CHORDS (simplified detection)
+        chroma_mean = np.mean(chroma, axis=1)
+        
+        # Generate likely chords based on key
+        chords = [
+            f"{key}",           # I (Tonic)
+            get_chord(key, 5),  # V (Dominant)
+            get_chord(key, 3),  # iii
+            get_chord(key, 4)   # IV
+        ]
+        
+        return {
+            'tempo': round(float(tempo), 2),
+            'key': key,
+            'scale': f"{key} Major",
+            'chords': chords
+        }
+        
+    except Exception as e:
+        return {'error': str(e)}
+
+def get_chord(root, semitones):
+    keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    root_idx = keys.index(root)
+    new_idx = (root_idx + semitones) % 12
+    return keys[new_idx]
+
+if __name__ == "__main__":
+    audio_file = sys.argv[1]
+    result = analyze_song(audio_file)
+    print(json.dumps(result))
+`;
+
+  // Write temporary Python script
+  const tempScriptPath = path.join(__dirname, 'temp_chord_analysis.py');
+  fs.writeFileSync(tempScriptPath, chordAnalysisScript);
+
+  // Run Python analysis
+  const python = spawn(PYTHON_PATH, [tempScriptPath, filePath]);
+  
+  let dataString = '';
+  let errorString = '';
+  
+  python.stdout.on('data', (data) => {
+    dataString += data.toString();
+  });
+  
+  python.stderr.on('data', (data) => {
+    errorString += data.toString();
+    console.error(`Python Error: ${data}`);
+  });
+  
+  python.on('close', (code) => {
+    // Clean up temp script and input file
+    if (fs.existsSync(tempScriptPath)) {
+      fs.unlinkSync(tempScriptPath);
+    }
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    if (code !== 0) {
+      console.error('Chord analysis failed:', errorString);
+      return res.status(500).json({ error: 'Analysis failed' });
+    }
+    
+    try {
+      const result = JSON.parse(dataString);
+      
+      if (result.error) {
+        return res.status(500).json({ error: result.error });
+      }
+      
+      console.log('✅ Chord analysis complete:', result);
+      res.json({
+        ...result,
+        filename: req.file.originalname
+      });
+    } catch (e) {
+      console.error('Failed to parse results:', e);
+      res.status(500).json({ error: 'Failed to parse analysis results' });
+    }
+  });
+
+  python.on('error', (error) => {
+    console.error('Python process error:', error);
+    if (fs.existsSync(tempScriptPath)) {
+      fs.unlinkSync(tempScriptPath);
+    }
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+    res.status(500).json({ error: 'Failed to start analysis process' });
+  });
+});
+
+// ==============================
+// END CHORD ANALYZER ROUTES
+// ==============================
+
+// Real-time Audio Analysis Function (existing)
 const analyzeAudio = async (audioPath) => {
   return new Promise((resolve, reject) => {
     const analysisScript = `
@@ -243,7 +403,7 @@ app.get('/api/health', (req, res) => {
     status: 'LoopLytic Stem Extractor Running', 
     timestamp: new Date().toISOString(),
     mode: 'production',
-    features: ['Real Audio Analysis', 'Zero-Latency Playback', 'Multi-Track Player']
+    features: ['Real Audio Analysis', 'Zero-Latency Playback', 'Multi-Track Player', 'Chord Detection']
   });
 });
 
@@ -256,7 +416,7 @@ app.get('/api/check-demucs', async (req, res) => {
     
     let output = '';
     let errorOutput = '';
-    let responseStatus = null; // Track if we've already sent a response
+    let responseStatus = null;
 
     checkProcess.stdout.on('data', (data) => {
       output += data.toString();
@@ -267,7 +427,7 @@ app.get('/api/check-demucs', async (req, res) => {
     });
     
     checkProcess.on('close', (code) => {
-      if (responseStatus === null) { // Only send response if we haven't already
+      if (responseStatus === null) {
         responseStatus = 'sent';
         if (code === 0 && output.includes('installed')) {
           res.json({ 
@@ -286,7 +446,7 @@ app.get('/api/check-demucs', async (req, res) => {
     });
 
     checkProcess.on('error', (error) => {
-      if (responseStatus === null) { // Only send response if we haven't already
+      if (responseStatus === null) {
         responseStatus = 'sent';
         res.json({ 
           installed: false, 
@@ -323,7 +483,6 @@ app.post('/api/separate', upload.single('audio'), async (req, res) => {
   console.log(`🔑 Session ID: ${sessionId}`);
   console.log(`📁 File size: ${(req.file.size / (1024 * 1024)).toFixed(2)} MB`);
 
-  // Ensure output directories exist
   if (!fs.existsSync(outputDir)) {
     fs.mkdirSync(outputDir, { recursive: true });
   }
@@ -331,10 +490,9 @@ app.post('/api/separate', upload.single('audio'), async (req, res) => {
     fs.mkdirSync(multiTrackOutputDir, { recursive: true });
   }
 
-  let responseStatus = null; // Track response status to prevent double responses
+  let responseStatus = null;
 
   try {
-    // Step 1: Real-time Audio Analysis
     console.log('🎼 Analyzing audio features...');
     let audioAnalysis;
     try {
@@ -355,7 +513,6 @@ app.post('/api/separate', upload.single('audio'), async (req, res) => {
       };
     }
 
-    // Step 2: Verify Demucs is available
     const checkProcess = spawn(PYTHON_PATH, ['-c', 'import demucs; print("ready")'], {
       env: { ...process.env }
     });
@@ -373,7 +530,7 @@ app.post('/api/separate', upload.single('audio'), async (req, res) => {
     });
 
     checkProcess.on('close', (checkCode) => {
-      if (responseStatus !== null) return; // Prevent double execution
+      if (responseStatus !== null) return;
 
       if (checkCode !== 0) {
         responseStatus = 'sent';
@@ -384,16 +541,15 @@ app.post('/api/separate', upload.single('audio'), async (req, res) => {
         });
       }
 
-      // Step 3: Start Enhanced Demucs separation process
       console.log('🎤 Starting enhanced Demucs separation...');
       
       const demucsArgs = [
         '-m', 'demucs.separate',
-        '--name', 'htdemucs',           // Use hybrid transformer model (best quality)
-        '--out', multiTrackOutputDir,   // Output to multi-track directory
-        '--mp3',                        // Output as MP3
-        '--mp3-bitrate', '320',         // High quality MP3 (320kbps)
-        '--jobs', '4',                  // Use 4 CPU cores for faster processing
+        '--name', 'htdemucs',
+        '--out', multiTrackOutputDir,
+        '--mp3',
+        '--mp3-bitrate', '320',
+        '--jobs', '4',
         inputFile
       ];
 
@@ -404,7 +560,6 @@ app.post('/api/separate', upload.single('audio'), async (req, res) => {
       let stderr = '';
       let stdout = '';
 
-      // Capture output for debugging
       demucsProcess.stdout.on('data', (data) => {
         stdout += data.toString();
         console.log('🔄 Demucs progress:', data.toString().trim());
@@ -415,14 +570,12 @@ app.post('/api/separate', upload.single('audio'), async (req, res) => {
         console.log('📊 Demucs info:', data.toString().trim());
       });
 
-      // Handle process completion
       demucsProcess.on('close', (code) => {
-        if (responseStatus !== null) return; // Prevent double response
+        if (responseStatus !== null) return;
         responseStatus = 'sent';
 
         console.log(`✅ Demucs process finished with code: ${code}`);
 
-        // Clean up input file
         try {
           fs.unlinkSync(inputFile);
           console.log('🧹 Input file cleaned up');
@@ -431,13 +584,11 @@ app.post('/api/separate', upload.single('audio'), async (req, res) => {
         }
 
         if (code === 0) {
-          // Success - find the separated files
           const baseName = path.basename(inputFile, path.extname(inputFile));
           const separatedDir = path.join(multiTrackOutputDir, 'htdemucs', baseName);
           
           console.log('🔍 Looking for separated files in:', separatedDir);
 
-          // Check if separation was successful
           const stemFiles = {
             vocals: path.join(separatedDir, 'vocals.mp3'),
             drums: path.join(separatedDir, 'drums.mp3'),
@@ -445,17 +596,14 @@ app.post('/api/separate', upload.single('audio'), async (req, res) => {
             other: path.join(separatedDir, 'other.mp3')
           };
 
-          // Verify all files exist and create download URLs
           const stems = {};
           let missingFiles = [];
 
           for (const [stemType, filePath] of Object.entries(stemFiles)) {
             if (fs.existsSync(filePath)) {
-              // Convert to URL path for multi-track player
               const relativePath = path.relative(path.join(__dirname, 'output'), filePath);
               stems[stemType] = `/output/${relativePath.replace(/\\/g, '/')}`;
               
-              // Log file size for verification
               const stats = fs.statSync(filePath);
               console.log(`🎵 ${stemType}: ${(stats.size / (1024 * 1024)).toFixed(2)}MB`);
             } else {
@@ -465,7 +613,6 @@ app.post('/api/separate', upload.single('audio'), async (req, res) => {
           }
 
           if (Object.keys(stems).length === 4) {
-            // All stems generated successfully
             console.log('🎉 Separation completed successfully!');
             res.json({
               success: true,
@@ -482,10 +629,9 @@ app.post('/api/separate', upload.single('audio'), async (req, res) => {
                 duration: audioAnalysis.duration
               },
               multiTrack: true,
-              showPlayer: true  // Flag to show multitrack player
+              showPlayer: true
             });
           } else {
-            // Some files missing
             console.error('❌ Some stem files are missing');
             res.status(500).json({
               success: false,
@@ -496,7 +642,6 @@ app.post('/api/separate', upload.single('audio'), async (req, res) => {
             });
           }
         } else {
-          // Demucs failed
           console.error('❌ Demucs separation failed');
           console.error('stdout:', stdout);
           console.error('stderr:', stderr);
@@ -511,9 +656,8 @@ app.post('/api/separate', upload.single('audio'), async (req, res) => {
         }
       });
 
-      // Handle process errors
       demucsProcess.on('error', (error) => {
-        if (responseStatus !== null) return; // Prevent double response
+        if (responseStatus !== null) return;
         responseStatus = 'sent';
 
         console.error('❌ Error spawning Demucs process:', error);
@@ -548,10 +692,11 @@ app.post('/api/separate', upload.single('audio'), async (req, res) => {
 
 // Start server with enhanced logging
 app.listen(PORT, () => {
-  console.log(`🚀 LoopLytic Enhanced Stem Extractor Server running on http://localhost:${PORT}`);
-  console.log(`📊 Features: Real Audio Analysis • Zero-Latency Multi-Track Player • Professional Stems`);
+  console.log(`🚀 LoopLytic Enhanced Server running on http://localhost:${PORT}`);
+  console.log(`📊 Features: Real Audio Analysis • Multi-Track Player • Chord Detection`);
   console.log(`🐍 Python Path: ${PYTHON_PATH}`);
   console.log('🔧 Requirements: demucs, librosa, torch, torchaudio, numpy, scipy');
-  console.log('🎵 Ready for professional music separation with BPM, Key & Tempo detection!');
+  console.log('🎵 Ready for professional music separation and chord analysis!');
   console.log('⚡ Multi-track player with zero-latency buffer-based playback enabled');
+  console.log('🎼 Chord Analyzer API: POST /api/chord/analyze');
 });

@@ -39,7 +39,29 @@ export default function Navbar({ isSignedIn, setIsSignedIn }) {
               Academy
             </Link>
           </li>
+          
+          {/* Conditional Menu Items - Only show when signed in */}
+          {isSignedIn && (
+            <>
+              <li>
+                <Link to="/chord-tutor" className="hover:text-white transition">
+                  Chord Tutor
+                </Link>
+              </li>
+              <li>
+                <Link to="/stem-extractor" className="hover:text-white transition">
+                  Stem Extractor
+                </Link>
+              </li>
+              <li>
+                <Link to="/chord-analyzer" className="hover:text-white transition">
+                  Chord Analyzer
+                </Link>
+              </li>
+            </>
+          )}
         </ul>
+        
         {isSignedIn ? (
           <div className="bg-green-500/20 text-green-400 border border-green-400 px-4 py-1 rounded-full text-sm">
             Signed in

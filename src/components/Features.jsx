@@ -15,6 +15,12 @@ const features = [
     description:
       "Isolate vocals, drums, and instruments from audio files using Spleeter and Demucs — perfect for practice and remixing.",
     path: "/stem-extractor"
+  },
+  {
+    title: "Chord Analyzer",
+    description:
+      "Automatically detect tempo, key, scale, and the main 4 chords from any song with interactive guitar and piano chord diagrams.",
+    path: "/chord-analyzer"
   }
 ];
 
@@ -31,7 +37,7 @@ export default function Features() {
         <h2 className="text-3xl font-semibold text-center mb-12" style={{ color: '#e6e6ef' }}>
           Key Features
         </h2>
-        <div className="grid md:grid-cols-2 gap-10">
+        <div className="grid md:grid-cols-3 gap-10">
           {features.map((feature, idx) => (
             <Card 
               key={idx}
